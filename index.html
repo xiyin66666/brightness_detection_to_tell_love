@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>光之告白 · 光影情诗</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            background: #000000;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Poppins', 'Helvetica Neue', system-ui, -apple-system, sans-serif;
+            padding: 12px;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 全屏沉浸式相机容器 */
+        .camera-full {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(1);
+            filter: brightness(0.98) contrast(1.02);
+        }
+
+        /* 覆盖层canvas - 用来绘制随机的情话“光斑区域” */
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* 中央动态情话大面板 - 只在足够亮度时浮现 */
+        .floating-love {
+            position: fixed;
+            bottom: 8%;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 30;
+            transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            pointer-events: none;
+        }
+
+        .love-card {
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(20px);
+            display: inline-block;
+            max-width: 85%;
+            margin: 0 auto;
+            padding: 18px 28px;
+            border-radius: 100px;
+            border: 1px solid rgba(255, 200, 220, 0.4);
+            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .love-text {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #FFDEE9 0%, #FFB5C0 40%, #FF8A9F 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            white-space: normal;
+            word-break: keep-all;
+        }
+
+        /* 无亮度时情话完全透明且下沉 */
+        .floating-love.hidden-love {
+            opacity: 0;
+            transform: translateY(30px);
+            visibility: hidden;
+        }
+
+        .floating-love.visible-love {
+            opacity: 1;
+            transform: translateY(0px);
+            visibility: visible;
+        }
+
+        /* 底部微提示 */
+        .instruction {
+            position: fixed;
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 25;
+            font-size: 12px;
+            color: rgba(255, 255, 200, 0.6);
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(8px);
+            width: fit-content;
+            margin: 0 auto;
+            padding: 6px 18px;
+            border-radius: 60px;
+            pointer-events: none;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+
+        .light-meter {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(8px);
+            padding: 6px 14px;
+            border-radius: 40px;
+            z-index: 30;
+            font-size: 12px;
+            color: #ffdca8;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            border: 0.5px solid rgba(255,215,0,0.3);
+        }
+
+        .led-bulb {
+            width: 10px;
+            height: 10px;
+            border-radius: 10px;
+            background: #444;
+            transition: 0.1s;
+        }
+
+        .led-bulb.lit {
+            background: #ffcc44;
+            box-shadow: 0 0 12px #ffaa33;
+        }
+
+        .camera-btn {
+            position: fixed;
+            bottom: 24px;
+            right: 20px;
+            background: rgba(20, 20, 30, 0.8);
+            backdrop-filter: blur(12px);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 50px;
+            color: #ffbfaf;
+            font-size: 12px;
+            font-weight: 500;
+            z-index: 35;
+            cursor: pointer;
+            pointer-events: auto;
+            font-family: inherit;
+            transition: 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .camera-btn:active {
+            transform: scale(0.94);
+            background: #ff8a7a;
+            color: white;
+        }
+
+        @keyframes softGlow {
+            0% { text-shadow: 0 0 0px rgba(255,120,160,0);}
+            100% { text-shadow: 0 0 12px rgba(255,100,130,0.5);}
+        }
+
+        .glow-effect {
+            animation: softGlow 1s infinite alternate;
+        }
+    </style>
+</head>
+<body>
+
+<div class="camera-full">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlayCanvas"></canvas>
+</div>
+
+<div class="floating-love hidden-love" id="floatingLove">
+    <div class="love-card">
+        <div class="love-text" id="dynamicLoveMsg">✨ 照亮我的心 ✨</div>
+    </div>
+</div>
+
+<div class="light-meter">
+    <div class="led-bulb" id="lightBulb"></div>
+    <span id="lightStatusText">💡 光之低语</span>
+</div>
+<button class="camera-btn" id="switchCameraBtn">📸 切换镜头</button>
+<div class="instruction">
+    🕯️ 用手电筒照射画面中任意光点区域 → 会浮现专属情话 ✨ 不同光斑不同告白
+</div>
+
+<script>
+    (function() {
+        // ---------- 浪漫词库 (更丰富，随机感) ----------
+        const LOVE_WORDS = [
+            "💖 我爱你 不止三千遍 💖",
+            "🌙 月亮代表我的心 🌙",
+            "🌸 你一笑 整个春天都来了 🌸",
+            "✨ 星河滚烫 你是人间理想 ✨",
+            "🍃 想和你一起吹晚风 🍃",
+            "💫 你是我平淡里的星光 💫",
+            "🌹 玫瑰到了花期 我很想你 🌹",
+            "🍬 想把所有的甜都给你 🍬",
+            "🌟 遇见你 万物皆明亮 🌟",
+            "🎈 你是我藏在心底的欢喜 🎈",
+            "💌 目光所及 全是你 💌",
+            "🍀 你是我的 百分之百 心动 🍀",
+            "❤️‍🔥 纵使万物凋零 我爱你依旧 ❤️‍🔥",
+            "🌈 你让我的世界变得彩色 🌈",
+            "💎 你是最珍贵的宝藏 💎",
+            "🍁 每片落叶都在诉说爱你 🍁",
+            "⭐ 为你摘星揽月 在所不辞 ⭐",
+            "🕯️ 你是黑暗中的光束 🕯️",
+            "🎀 想和你虚度时光 🎀",
+            "💓 砰砰心动 皆为你 💓"
+        ];
+
+        // 随机情话区域 —— 我们不使用死板的网格，而是动态随机生成若干个“感光圆点/光晕区域”
+        // 每个区域有坐标(归一化 0~1), 半径(0.05~0.15), 以及随机的情话索引
+        let loveSpots = [];        // 存储 { x, y, radius, phraseIndex, id }
+        const MIN_SPOTS = 12;
+        const MAX_SPOTS = 24;
+        
+        // 亮度检测 & 光斑区域阈值设定
+        let activeSpotId = -1;            // 当前被照射的区域id
+        let lastActiveSpot = -1;
+        let stableCounter = 0;
+        let highBrightnessMode = false;    // 是否全局有足够亮度来展示情话（非完全漆黑）
+        
+        // 摄像头相关
+        let currentStream = null;
+        const video = document.getElementById('video');
+        const overlayCanvas = document.getElementById('overlayCanvas');
+        let overlayCtx = overlayCanvas.getContext('2d');
+        
+        // 分析用canvas (离屏)
+        let analysisCanvas = document.createElement('canvas');
+        let analysisCtx = analysisCanvas.getContext('2d');
+        
+        // 全局参数
+        let animationFrameId = null;
+        let detectionInterval = null;
+        let videoWidth = 0, videoHeight = 0;
+        
+        // UI元素
+        const floatingLoveDiv = document.getElementById('floatingLove');
+        const dynamicLoveMsgSpan = document.getElementById('dynamicLoveMsg');
+        const lightBulb = document.getElementById('lightBulb');
+        const lightStatusSpan = document.getElementById('lightStatusText');
+        
+        // 动态随机种子: 每次初始化画面时重新生成随机情话区域，避免死板网格
+        function generateRandomLoveSpots(screenWidth = 1920, screenHeight = 1080, count = null) {
+            const spotCount = count || Math.floor(Math.random() * (MAX_SPOTS - MIN_SPOTS + 1) + MIN_SPOTS);
+            const newSpots = [];
+            // 避免重叠过于严重: 简单尝试放置，保证一定随机性
+            for (let i = 0; i < spotCount; i++) {
+                let attempts = 0;
+                let placed = false;
+                while (!placed && attempts < 40) {
+                    // 归一化坐标 (0~1)，偏向中心区域略微多一点但允许边缘，更自然
+                    let x = Math.random();      // 0..1
+                    let y = Math.random();
+                    let radius = 0.06 + Math.random() * 0.1;  // 半径占比6%~16%
+                    // 避免完全重合 (非严格但足够)
+                    let overlap = false;
+                    for (let s of newSpots) {
+                        const dx = s.x - x;
+                        const dy = s.y - y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < (s.radius + radius) * 0.7) {
+                            overlap = true;
+                            break;
+                        }
+                    }
+                    if (!overlap) {
+                        const randomPhrase = LOVE_WORDS[Math.floor(Math.random() * LOVE_WORDS.length)];
+                        const phraseIndex = LOVE_WORDS.indexOf(randomPhrase);
+                        newSpots.push({
+                            x: x,
+                            y: y,
+                            radius: radius,
+                            phrase: randomPhrase,
+                            phraseIndex: phraseIndex >= 0 ? phraseIndex : 0,
+                            id: i
+                        });
+                        placed = true;
+                    }
+                    attempts++;
+                }
+                // 如果始终没位置 直接随机塞一个
+                if (!placed) {
+                    newSpots.push({
+                        x: Math.random(),
+                        y: Math.random(),
+                        radius: 0.07,
+                        phrase: LOVE_WORDS[i % LOVE_WORDS.length],
+                        phraseIndex: i % LOVE_WORDS.length,
+                        id: i
+                    });
+                }
+            }
+            return newSpots;
+        }
+        
+        // 绘制覆盖层：绘制所有情话光晕区域（半透明光晕 + 隐约文字轮廓），但只有亮度足够时才可见暗示；
+        // 但是我们设计在没有足够亮度时所有光晕区域都不可见（隐形），当亮度足够，这些区域半透显示，鼓励用户去照射。
+        // 为了更浪漫: 平时环境昏暗时光晕不可见，当环境整体亮度较高或手电激活时慢慢显现这些区域，引导照射。
+        // 实现: 根据全局亮度因子 dynamicAlpha 来控制绘制区域的可见度。
+        let globalAmbientBrightness = 0;   // 全局平均亮度 0-255
+        
+        function drawSpotsOverlay() {
+            if (!overlayCtx || !overlayCanvas) return;
+            const canvas = overlayCanvas;
+            const w = canvas.width;
+            const h = canvas.height;
+            if (w === 0 || h === 0) return;
+            overlayCtx.clearRect(0, 0, w, h);
+            
+            // 根据全局亮度和是否激活高亮模式来决定绘制的alpha强度 (光照足够亮时才显示区域轮廓)
+            // 这样用户自然知道要照哪里，但是又保持神秘。
+            let visibilityAlpha = 0;
+            // 如果全局亮度 > 55 或者 highBrightnessMode激活(有某个区域很亮)，显示光晕引导
+            if (globalAmbientBrightness > 55 || highBrightnessMode) {
+                // 亮度越高，光晕可见度越强 (0.2 ~ 0.8)
+                const factor = Math.min(0.75, Math.max(0.2, (globalAmbientBrightness - 40) / 180));
+                visibilityAlpha = factor;
+            } else {
+                visibilityAlpha = 0;   // 完全黑暗时无视觉引导，必须用手电筒探索
+            }
+            
+            // 绘制每一个随机光晕区域
+            for (let spot of loveSpots) {
+                const cx = spot.x * w;
+                const cy = spot.y * h;
+                const rad = spot.radius * Math.min(w, h);
+                
+                // 如果该区域正在被激活（被手电筒照射），高亮强烈显示，并且加上额外光晕
+                const isActive = (activeSpotId === spot.id);
+                
+                let fillAlpha = visibilityAlpha;
+                let strokeAlpha = visibilityAlpha + 0.2;
+                if (isActive) {
+                    fillAlpha = 0.65;
+                    strokeAlpha = 1.0;
+                }
+                
+                // 绘制外发光效果 (径向渐变)
+                const gradient = overlayCtx.createRadialGradient(cx, cy, rad * 0.2, cx, cy, rad);
+                if (isActive) {
+                    gradient.addColorStop(0, 'rgba(255, 200, 100, 0.9)');
+                    gradient.addColorStop(0.5, 'rgba(255, 120, 80, 0.6)');
+                    gradient.addColorStop(1, 'rgba(255, 60, 80, 0)');
+                } else {
+                    gradient.addColorStop(0, `rgba(255, 220, 180, ${fillAlpha * 0.7})`);
+                    gradient.addColorStop(0.6, `rgba(255, 160, 120, ${fillAlpha * 0.3})`);
+                    gradient.addColorStop(1, `rgba(255, 80, 100, 0)`);
+                }
+                overlayCtx.beginPath();
+                overlayCtx.arc(cx, cy, rad, 0, Math.PI * 2);
+                overlayCtx.fillStyle = gradient;
+                overlayCtx.fill();
+                
+                // 边缘线条
+                overlayCtx.beginPath();
+                overlayCtx.arc(cx, cy, rad * 0.85, 0, Math.PI * 2);
+                overlayCtx.strokeStyle = `rgba(255, 200, 150, ${isActive ? 0.9 : strokeAlpha * 0.7})`;
+                overlayCtx.lineWidth = isActive ? 3 : 1.5;
+                overlayCtx.stroke();
+                
+                // 当足够亮或激活时，内部显示微小的爱心/字提示（神秘感）
+                if (visibilityAlpha > 0.3 || isActive) {
+                    overlayCtx.font = `${Math.max(12, rad * 0.5)}px "Segoe UI", system-ui`;
+                    overlayCtx.fillStyle = `rgba(255, 240, 200, ${isActive ? 1 : visibilityAlpha * 0.8})`;
+                    overlayCtx.shadowBlur = 0;
+                    overlayCtx.textAlign = "center";
+                    overlayCtx.textBaseline = "middle";
+                    let shortHint = "❤️";
+                    if (isActive) shortHint = "✨";
+                    overlayCtx.fillText(shortHint, cx, cy);
+                }
+            }
+            
+            // 额外: 如果激活区域存在，在中央大情话展示区之外，也可显示光斑名，但主要情话在下方面板
+        }
+        
+        // 亮度检测: 将视频帧划分成与loveSpots对应的区域，检测每个光斑区域的局部亮度，以及全局亮度
+        function computeSpotsBrightness() {
+            if (!video.videoWidth || !video.videoHeight) return null;
+            const srcW = video.videoWidth;
+            const srcH = video.videoHeight;
+            // 分析尺寸限制提高性能
+            let anaW = srcW;
+            let anaH = srcH;
+            const MAX_ANA = 480;
+            if (srcW > MAX_ANA) {
+                anaW = MAX_ANA;
+                anaH = Math.floor(srcH * (MAX_ANA / srcW));
+            }
+            if (analysisCanvas.width !== anaW || analysisCanvas.height !== anaH) {
+                analysisCanvas.width = anaW;
+                analysisCanvas.height = anaH;
+            }
+            analysisCtx.drawImage(video, 0, 0, srcW, srcH, 0, 0, anaW, anaH);
+            const imgData = analysisCtx.getImageData(0, 0, anaW, anaH);
+            const data = imgData.data;
+            
+            // 全局平均亮度
+            let totalLum = 0;
+            const pixelCountTotal = anaW * anaH;
+            for (let i = 0; i < pixelCountTotal; i++) {
+                const r = data[i*4];
+                const g = data[i*4+1];
+                const b = data[i*4+2];
+                const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                totalLum += lum;
+            }
+            const globalAvgLum = totalLum / pixelCountTotal;
+            globalAmbientBrightness = globalAvgLum;
+            
+            // 计算每个loveSpots的平均亮度（根据归一化坐标映射到分析画布）
+            const spotsBrightness = [];
+            for (let spot of loveSpots) {
+                // 映射到分析图坐标
+                const centerX = spot.x * anaW;
+                const centerY = spot.y * anaH;
+                const radiusPx = spot.radius * Math.min(anaW, anaH);
+                if (radiusPx <= 1) {
+                    spotsBrightness.push({ id: spot.id, brightness: 0 });
+                    continue;
+                }
+                let sum = 0;
+                let count = 0;
+                const radiusSq = radiusPx * radiusPx;
+                // 遍历圆形区域内的像素 (优化: 简单框遍历)
+                const startX = Math.max(0, Math.floor(centerX - radiusPx));
+                const endX = Math.min(anaW, Math.ceil(centerX + radiusPx));
+                const startY = Math.max(0, Math.floor(centerY - radiusPx));
+                const endY = Math.min(anaH, Math.ceil(centerY + radiusPx));
+                for (let y = startY; y < endY; y++) {
+                    for (let x = startX; x < endX; x++) {
+                        const dx = x - centerX;
+                        const dy = y - centerY;
+                        if (dx*dx + dy*dy <= radiusSq) {
+                            const idx = (y * anaW + x) * 4;
+                            const r = data[idx];
+                            const g = data[idx+1];
+                            const b = data[idx+2];
+                            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                            sum += lum;
+                            count++;
+                        }
+                    }
+                }
+                const avgBright = count > 0 ? sum / count : 0;
+                spotsBrightness.push({ id: spot.id, brightness: avgBright });
+            }
+            return { globalAvg: globalAvgLum, spots: spotsBrightness };
+        }
+        
+        // 决策哪个区域被手电筒照射: 找出最高亮度的光斑区域，并与全局平均亮度对比阈值
+        function findIlluminatedSpot(spotsBrightness, globalAvg) {
+            if (!spotsBrightness || spotsBrightness.length === 0) return -1;
+            // 找出最大亮度区域
+            let maxBright = -1;
+            let maxId = -1;
+            for (let item of spotsBrightness) {
+                if (item.brightness > maxBright) {
+                    maxBright = item.brightness;
+                    maxId = item.id;
+                }
+            }
+            if (maxId === -1) return -1;
+            // 动态阈值：该区域亮度 > 全局亮度*1.65 且 绝对亮度大于70 (黑暗环境)
+            const condRelative = maxBright > globalAvg * 1.65;
+            const condAbs = maxBright > 68;
+            // 并且最大亮度必须大于其余区域的亮度差 (至少高于次高区域阈值20)
+            let secondBright = -1;
+            for (let item of spotsBrightness) {
+                if (item.id !== maxId && item.brightness > secondBright) secondBright = item.brightness;
+            }
+            const condDiff = (maxBright - secondBright) > 22;
+            if (condRelative && condAbs && condDiff) {
+                return maxId;
+            }
+            return -1;
+        }
+        
+        // 核心亮度检测循环
+        let lastSpotId = -1;
+        let stableSpotCount = 0;
+        
+        function detectionUpdate() {
+            if (!video || video.readyState < 2 || video.paused) return;
+            const result = computeSpotsBrightness();
+            if (!result) return;
+            const { globalAvg, spots } = result;
+            // 更新全局亮度显示以及led指示
+            const isGloballyLit = globalAvg > 50;
+            if (isGloballyLit || (activeSpotId !== -1)) {
+                lightBulb.classList.add('lit');
+                lightStatusSpan.innerHTML = '✨ 光之跃动 ✨';
+            } else {
+                lightBulb.classList.remove('lit');
+                lightStatusSpan.innerHTML = '🌙 暗夜秘境 🌙';
+            }
+            
+            // 高亮模式：只要有区域亮度高于阈值或者global较高，就允许展示情话面板
+            const illuminatedSpot = findIlluminatedSpot(spots, globalAvg);
+            if (illuminatedSpot !== -1) {
+                if (illuminatedSpot === lastSpotId) {
+                    stableSpotCount++;
+                } else {
+                    stableSpotCount = 1;
+                    lastSpotId = illuminatedSpot;
+                }
+                // 连续两帧稳定就激活
+                if (stableSpotCount >= 2) {
+                    if (activeSpotId !== illuminatedSpot) {
+                        activeSpotId = illuminatedSpot;
+                        // 找出对应的情话语录
+                        const targetSpot = loveSpots.find(s => s.id === activeSpotId);
+                        if (targetSpot) {
+                            dynamicLoveMsgSpan.innerHTML = targetSpot.phrase;
+                            // 显示情话面板 (可见)
+                            floatingLoveDiv.classList.remove('hidden-love');
+                            floatingLoveDiv.classList.add('visible-love');
+                            highBrightnessMode = true;
+                        } else {
+                            dynamicLoveMsgSpan.innerHTML = "💖 我爱你 💖";
+                            floatingLoveDiv.classList.remove('hidden-love');
+                            floatingLoveDiv.classList.add('visible-love');
+                        }
+                    }
+                }
+            } else {
+                // 没有照射任何区域
+                stableSpotCount = 0;
+                lastSpotId = -1;
+                if (activeSpotId !== -1) {
+                    activeSpotId = -1;
+                    // 依然保留一点点淡出? 如果没有光，情话消失（亮度不够时看不见）
+                    // 但是判定如果全局亮度非常低(低于38)，则情话面板隐藏；否则还显示之前的情话几秒？
+                    // 为了符合“亮度不够时看不见任何情话”，如果整体黑暗且没有任何区域高亮，情话完全隐藏。
+                    if (globalAvg < 48 && illuminatedSpot === -1) {
+                        floatingLoveDiv.classList.add('hidden-love');
+                        floatingLoveDiv.classList.remove('visible-love');
+                        highBrightnessMode = false;
+                    } else {
+                        // 如果周围环境还有些亮度但没有直接照射区域，短暂保留最后一句但渐渐模糊？但为严谨我们让他逐渐消失
+                        // 但设计要求：亮度不够时看不见情话；为了体验，无高亮光斑并且globalAvg低于阈值时彻底隐藏
+                        if (globalAvg < 55) {
+                            floatingLoveDiv.classList.add('hidden-love');
+                            floatingLoveDiv.classList.remove('visible-love');
+                            highBrightnessMode = false;
+                        } else {
+                            // 如果全局较亮但未精准照射，就隐藏情话等待光斑
+                            floatingLoveDiv.classList.add('hidden-love');
+                            highBrightnessMode = false;
+                        }
+                    }
+                } else {
+                    // 无激活区域时, 检测整体亮度: 若昏暗则隐藏
+                    if (globalAvg < 48) {
+                        floatingLoveDiv.classList.add('hidden-love');
+                        floatingLoveDiv.classList.remove('visible-love');
+                        highBrightnessMode = false;
+                    } else {
+                        // 环境光足够但未照到光斑: 同样不显示情话
+                        floatingLoveDiv.classList.add('hidden-love');
+                        highBrightnessMode = false;
+                    }
+                }
+            }
+            // 绘制覆盖层 (带动态可见性)
+            drawSpotsOverlay();
+        }
+        
+        // 同步覆盖层尺寸
+        function resizeCanvas() {
+            if (!video) return;
+            const rect = video.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                overlayCanvas.width = rect.width;
+                overlayCanvas.height = rect.height;
+                drawSpotsOverlay();
+            }
+        }
+        
+        // 摄像头初始化
+        async function initCamera(facing = "environment") {
+            if (currentStream) {
+                currentStream.getTracks().forEach(t => t.stop());
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
+                currentStream = stream;
+                video.srcObject = stream;
+                await video.play();
+                await new Promise(r => { if (video.videoWidth) r(); else video.addEventListener('loadedmetadata', r, { once: true }); });
+                videoWidth = video.videoWidth;
+                videoHeight = video.videoHeight;
+                resizeCanvas();
+                // 重置情话状态 & 重新生成随机光斑区域（每次重置摄像头都刷新随机区域，更有趣）
+                loveSpots = generateRandomLoveSpots();
+                activeSpotId = -1;
+                lastSpotId = -1;
+                stableSpotCount = 0;
+                floatingLoveDiv.classList.add('hidden-love');
+                highBrightnessMode = false;
+                if (detectionInterval) clearInterval(detectionInterval);
+                detectionInterval = setInterval(() => detectionUpdate(), 130);
+                return true;
+            } catch (err) {
+                console.warn(err);
+                try {
+                    const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
+                    currentStream = fallback;
+                    video.srcObject = fallback;
+                    await video.play();
+                    await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
+                    loveSpots = generateRandomLoveSpots();
+                    if (detectionInterval) clearInterval(detectionInterval);
+                    detectionInterval = setInterval(() => detectionUpdate(), 130);
+                    return true;
+                } catch (e) {
+                    dynamicLoveMsgSpan.innerHTML = "📷 请允许摄像头权限";
+                    return false;
+                }
+            }
+        }
+        
+        // 动画循环绘制canvas
+        function renderLoop() {
+            resizeCanvas();
+            requestAnimationFrame(renderLoop);
+        }
+        
+        // 切换摄像头按钮 (重新随机生成光斑，更混乱浪漫)
+        document.getElementById('switchCameraBtn').addEventListener('click', async () => {
+            await initCamera("environment");
+            loveSpots = generateRandomLoveSpots();   // 切换镜头后随机刷新情话区域分布
+            activeSpotId = -1;
+            floatingLoveDiv.classList.add('hidden-love');
+        });
+        
+        // 监听resize
+        window.addEventListener('resize', () => resizeCanvas());
+        new ResizeObserver(() => resizeCanvas()).observe(video);
+        
+        // 启动应用
+        initCamera("environment").then(() => {
+            loveSpots = generateRandomLoveSpots();
+            renderLoop();
+        });
+        
+        // 页面关闭清理
+        window.addEventListener('beforeunload', () => {
+            if (detectionInterval) clearInterval(detectionInterval);
+            if (currentStream) currentStream.getTracks().forEach(t => t.stop());
+        });
+    })();
+</script>
+</body>
+</html>
